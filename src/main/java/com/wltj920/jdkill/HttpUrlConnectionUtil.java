@@ -1,15 +1,22 @@
-package com.xatu.jdkill.test;
+package com.wltj920.jdkill;
 
+import cn.hutool.core.io.FileUtil;
+import cn.hutool.core.util.URLUtil;
+import cn.hutool.http.HttpRequest;
+import cn.hutool.http.HttpResponse;
+import cn.hutool.http.HttpStatus;
 import com.alibaba.fastjson.JSONObject;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpCookie;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.Iterator;
+import java.util.*;
 
 /**
  * @author: lianghuan
@@ -95,34 +102,21 @@ public class HttpUrlConnectionUtil {
      * @param headers
      * @param url
      * @return
-     * @throws IOException
      */
-    public static String getQCode(JSONObject headers, String url) throws IOException {
-        String response = "";
-        HttpURLConnection httpURLConnection = (HttpURLConnection) (new URL(url).openConnection());
-        httpURLConnection.setRequestMethod("GET");
-        if (headers != null) {
-            Iterator<String> iterator = headers.keySet().iterator();
-            while (iterator.hasNext()) {
-                String headerName = iterator.next();
-                httpURLConnection.setRequestProperty(headerName, headers.get(headerName).toString());
-            }
+    public static String getQCode(Map<String, String> headers, String url) {
+        String responseBody = "";
+        HttpResponse response = HttpRequest.get(url).addHeaders(headers).execute();
+        List<HttpCookie> cookies = response.getCookies();
+        //把Cookie给全局Cookie管理器，原版这里得不到Cookie，强制给它加进去
+        cookies.forEach(cookie -> Start.manager.getCookieStore().add(URLUtil.toURI(url), cookie));
+        if (response.getStatus() == HttpStatus.HTTP_OK) {
+            InputStream inputStream = response.bodyStream();
+            FileUtil.del("QCode.png");
+            FileUtil.writeFromStream(inputStream, "QCode.png");
+            responseBody = response.body();
+            response.close();
         }
-        httpURLConnection.connect();
-        if (httpURLConnection.getResponseCode() == 200) {
-            InputStream inputStream = httpURLConnection.getInputStream();
-            OutputStream outputStream = new FileOutputStream("QCode.png");
-            byte[] buffer;
-            int length;
-            buffer = new byte[1024];
-            while ((length = inputStream.read(buffer)) != -1) {
-                outputStream.write(buffer, 0, length);
-                response = response + new String(buffer, 0, length, "UTF-8");
-            }
-            outputStream.close();
-            httpURLConnection.disconnect();
-        }
-        return response;
+        return responseBody;
     }
 
     /**
@@ -163,7 +157,7 @@ public class HttpUrlConnectionUtil {
 
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();// 打开连接
         conn.setRequestProperty("User-Agent", "Mozilla/4.0 (compatible; MSIE 5.0; Windows NT; DigExt)");
-        conn.setRequestProperty("contentType", "GBK"); // 设置url中文参数编码
+        conn.setRequestProperty("contentType", "UTF-8"); // 设置url中文参数编码
 
         conn.setConnectTimeout(5 * 1000);// 请求的时间
 

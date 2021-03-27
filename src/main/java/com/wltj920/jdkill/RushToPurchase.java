@@ -1,10 +1,10 @@
 package com.wltj920.jdkill;
 
+import cn.hutool.extra.mail.MailUtil;
 import com.alibaba.fastjson.JSONObject;
 
 import java.io.IOException;
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,36 +15,39 @@ import java.util.Map;
  * @date: 2021/1/8 20:51
  */
 public class RushToPurchase implements Runnable {
+    volatile static Integer times = 0; //抢购次数(顺序执行)
+    volatile static Integer successTimes = 0;//成功抢购次数
     //请求头
-    volatile static Integer times = 0;
-    static Map<String, List<String>> stringListMap = new HashMap<String, List<String>>();
+    static Map<String, List<String>> stringListMap = new HashMap<>();
 
+    @Override
     public void run() {
         JSONObject headers = new JSONObject();
-        while (times < Start.ok) {
+        while (times < Start.optCount && successTimes < Start.ok) {
             //获取ip，使用的是免费的 携趣代理 ，不需要或者不会用可以注释掉
-            setIpProxy();
+            //setIpProxy();
 
             headers.put(Start.headerAgent, Start.headerAgentArg);
             headers.put(Start.Referer, Start.RefererArg);
             //抢购
-            String gate = null;
             try {
-                gate = HttpUrlConnectionUtil.get(headers, "https://cart.jd.com/gate.action?pcount=1&ptype=1&pid=" + Start.pid);
+                //这里是加到购物车里，显示购物车页面
+                HttpUrlConnectionUtil.get(headers, "https://cart.jd.com/gate.action?pcount=1&ptype=1&pid=" + Start.pid);
             } catch (IOException e) {
                 e.printStackTrace();
             }
-            //订单信息
-            stringListMap.clear();
+            //stringListMap.clear();
             try {
+                //订单信息
                 stringListMap = Start.manager.get(new URI("https://trade.jd.com/shopping/order/getOrderInfo.action"), stringListMap);
-            } catch (URISyntaxException e) {
+            } catch (Exception e) {
                 e.printStackTrace();
             }
             List<String> cookie = stringListMap.get("Cookie");
-            headers.put("Cookie", cookie.get(0).toString());
+            headers.put("Cookie", cookie.get(0));
             try {
-                String orderInfo = HttpUrlConnectionUtil.get(headers, "https://trade.jd.com/shopping/order/getOrderInfo.action");
+                //这一步是跳转到订单结算页面
+                HttpUrlConnectionUtil.get(headers, "https://trade.jd.com/shopping/order/getOrderInfo.action");
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -69,20 +72,25 @@ public class RushToPurchase implements Runnable {
             headers.put("x-requested-with", "XMLHttpRequest");
             headers.put("upgrade-insecure-requests", "1");
             headers.put("sec-fetch-user", "?1");
-            stringListMap.clear();
+            //stringListMap.forEach((key, list) -> list.clear());
+            //stringListMap.clear();
+            //MapUtil.clear(stringListMap);
             try {
+                //打开订单页面
                 stringListMap = Start.manager.get(new URI("https://trade.jd.com/shopping/order/getOrderInfo.action"), stringListMap);
-            } catch (URISyntaxException e) {
+            } catch (Exception e) {
                 e.printStackTrace();
             }
             cookie = stringListMap.get("Cookie");
-            headers.put("Cookie", cookie.get(0).toString());
+            headers.put("Cookie", cookie.get(0));
             String submitOrder = null;
             try {
-                if (times < Start.ok) {
+                if (successTimes < Start.ok) {
+                    //最重要的一步：提交订单
                     submitOrder = HttpUrlConnectionUtil.post(headers, "https://trade.jd.com/shopping/order/submitOrder.action", null);
                 } else {
                     System.out.println("已抢购" + Start.ok + "件，请尽快完成付款");
+                    //发邮件通知
                     break;
                 }
             } catch (IOException e) {
@@ -104,7 +112,8 @@ public class RushToPurchase implements Runnable {
 
             if (success == "true") {
                 System.out.println("抢购成功，请尽快完成付款");
-                times++;
+                MailUtil.send(Start.mailAccount,"17562207@qq.com", "抢到东西啦", "京东抢购助手成功抢到1件商品，快付款吧，不然过期就没啦！", false);
+                successTimes++;
             } else {
                 if (message != null) {
                     System.out.println(message);
@@ -120,6 +129,7 @@ public class RushToPurchase implements Runnable {
                     System.out.println("获取用户订单信息失败");
                 }
             }
+            times ++;
         }
     }
 

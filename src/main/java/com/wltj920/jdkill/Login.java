@@ -1,12 +1,15 @@
 package com.wltj920.jdkill;
 
-import com.alibaba.fastjson.JSONObject;
+import cn.hutool.core.io.FileUtil;
+import cn.hutool.core.util.RuntimeUtil;
+import cn.hutool.http.HttpRequest;
 import com.sun.jna.Native;
 import com.sun.jna.Pointer;
 import com.sun.jna.platform.win32.User32;
 import com.sun.jna.platform.win32.WinDef;
 import com.sun.jna.platform.win32.WinUser;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -24,32 +27,32 @@ public class Login {
     static String ticket = "";
 
     public static void Login() throws IOException, URISyntaxException, InterruptedException {
-        JSONObject headers = new JSONObject();
+        Map<String, String> headers = new HashMap<>();
         headers.put(Start.headerAgent, Start.headerAgentArg);
         headers.put(Start.Referer, Start.RefererArg);
         //获取二维码
-        Long now = System.currentTimeMillis();
+        long now = System.currentTimeMillis();
         HttpUrlConnectionUtil.getQCode(headers, "https://qr.m.jd.com/show?appid=133&size=147&t=" + now);
         //打开二维码
-        Runtime.getRuntime().exec("cmd /c QCode.png");
+        File qrCodeFile = FileUtil.file("QCode.png");
+        RuntimeUtil.exec("cmd", "/c", qrCodeFile.getAbsolutePath());
         URI url = new URI("https://qr.m.jd.com/show?appid=133&size=147&t=" + now);
-        Map<String, List<String>> stringListMap = new HashMap<String, List<String>>();
+        Map<String, List<String>> stringListMap;
         stringListMap = Start.manager.get(url, requestHeaders);
-        List cookieList = stringListMap.get("Cookie");
-        String cookies = cookieList.get(0).toString();
+        List<String> cookieList = stringListMap.get("Cookie");
+        String cookies = cookieList.stream().filter(cookie -> cookie.startsWith("wlfstk_smdl")).findFirst().orElse("");
         String token = cookies.split("wlfstk_smdl=")[1];
         headers.put("Cookie", cookies);
         //判断是否扫二维码
         while (true) {
             String checkUrl = "https://qr.m.jd.com/check?appid=133&callback=jQuery" + (int) ((Math.random() * (9999999 - 1000000 + 1)) + 1000000) + "&token=" + token + "&_=" + System.currentTimeMillis();
-            String qrCode = HttpUrlConnectionUtil.get(headers, checkUrl);
+            String qrCode = HttpRequest.get(checkUrl).addHeaders(headers).execute().body();
             if (qrCode.indexOf("二维码未扫描") != -1) {
                 System.out.println("二维码未扫描，请扫描二维码登录");
             } else if (qrCode.indexOf("请手机客户端确认登录") != -1) {
                 System.out.println("请手机客户端确认登录");
             } else {
-                ticket = qrCode.split("\"ticket\" : \"")[1].split("\"\n" +
-                        "}\\)")[0];
+                ticket = qrCode.split("\"ticket\" : \"")[1].split("\"\n" + "}\\)")[0];
                 System.out.println("已完成二维码扫描登录");
                 close();
                 break;
@@ -57,7 +60,7 @@ public class Login {
             Thread.sleep(3000);
         }
         //验证，获取cookie
-        String qrCodeTicketValidation = HttpUrlConnectionUtil.get(headers, "https://passport.jd.com/uc/qrCodeTicketValidation?t=" + ticket);
+        String qrCodeTicketValidation = HttpRequest.get("https://passport.jd.com/uc/qrCodeTicketValidation?t=" + ticket).addHeaders(headers).execute().body();
         stringListMap = Start.manager.get(url, requestHeaders);
         cookieList = stringListMap.get("Cookie");
         cookies = cookieList.get(0).toString();
