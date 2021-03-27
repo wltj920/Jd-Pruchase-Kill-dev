@@ -1,4 +1,4 @@
-package com.xatu.jdkill.test;
+package com.wltj920.jdkill;
 
 import com.alibaba.fastjson.JSONObject;
 import com.sun.jna.Native;
